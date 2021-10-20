@@ -75,7 +75,8 @@ void condense(queue &q, const float *mat, float *det) {
                        }
 
                        if (r_ == 0 && c_ == 0) {
-                         a_arr[0] = a_mat[i][l_idx];
+                         a_arr[0] =
+                             sycl::pow(a_mat[i][l_idx], (float)((N - i) - 2));
                        }
                      });
     });
@@ -90,6 +91,19 @@ void condense(queue &q, const float *mat, float *det) {
     });
     evt.wait();
   }
+
+  host_accessor<float, 2, access::mode::read> h_mat{b_mat, range<2>{2, 2},
+                                                    id<2>{N - 2, N - 2}};
+  float lst = h_mat[0][0] * h_mat[1][1] - h_mat[0][1] * h_mat[1][0];
+
+  host_accessor<float, 1, access::mode::read> h_arr{b_arr};
+  float mult = 1.f;
+
+  for (uint i = 0; i < N - 2; i++) {
+    mult *= h_arr[i];
+  }
+
+  *det = lst / mult;
 }
 
 void example_matrix(float *const mat) {
