@@ -28,14 +28,13 @@ void condense(queue &q, const float *mat, float *det) {
       q.submit([&](handler &h) {
         accessor<float, 2, access::mode::read, access::target::global_buffer>
             a_mat{b_mat, h, range<2>{1, N - i}, id<2>{i, i}};
-        accessor<int, 1, access::mode::read_write,
-                 access::target::global_buffer>
+        accessor<int, 1, access::mode::write, access::target::global_buffer>
             a_l{b_l, h};
 
         h.single_task([=]() {
-          for (uint j = i; j < N; j++) {
-            if (a_mat[i][j] != 0.f) {
-              a_l[0] = j;
+          for (uint j = 0; j < N - i; j++) {
+            if (a_mat[0][j] != 0.f) {
+              a_l[0] = i + j;
               break;
             };
           }
@@ -87,4 +86,24 @@ void example_matrix(float *const mat) {
   mat[3 * N + 3] = 2;
 }
 
-int main() { return 0; }
+void show(const float *mat) {
+  for (uint i = 0; i < N; i++) {
+    for (uint j = 0; j < N; j++) {
+      std::cout << mat[i * N + j] << "\t";
+    }
+    std::cout << std::endl;
+  }
+  std::cout << std::endl;
+}
+
+int main() {
+  device d{default_selector{}};
+  queue q{d};
+  std::cout << "running on " << d.get_info<info::device::name>() << "\n"
+            << std::endl;
+
+  float *mat = (float *)malloc(sizeof(float) * N * N);
+  example_matrix(mat);
+
+  return 0;
+}
