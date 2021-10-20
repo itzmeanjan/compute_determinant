@@ -5,8 +5,8 @@
 
 using namespace sycl;
 
-const uint N = 4;
-const uint B = 4;
+const uint N = 1 << 10;
+const uint B = 1 << 5;
 
 int64_t condense(queue &q, const float *mat, float *det) {
   float *mat_ = (float *)malloc(sizeof(float) * N * N);
@@ -48,7 +48,10 @@ int64_t condense(queue &q, const float *mat, float *det) {
 
     if (l[0] == -1) {
       *det = 0;
-      return 0;
+      std::chrono::_V2::steady_clock::time_point end =
+          std::chrono::steady_clock::now();
+      return std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+          .count();
     }
 
     uint l_idx = l[0];
@@ -61,31 +64,23 @@ int64_t condense(queue &q, const float *mat, float *det) {
                 id<2>{i + 1, i + 1}, noinit};
       accessor<float, 1, access::mode::write, access::target::global_buffer>
           a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
-      accessor<float, 1, access::mode::read_write, access::target::local> a_lds{
-          range<1>{1}, h};
 
       h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
                                  range<2>{1, N - (i + 1) > B ? B : 2}},
                      [=](nd_item<2> it) {
-                       ONEAPI::sub_group sg = it.get_sub_group();
-                       if (ONEAPI::leader(sg)) {
-                         a_lds[0] = a_mat[0][l_idx];
-                       }
-
-                       sg.barrier();
-
                        const size_t r = it.get_global_id(0);
                        const size_t c = it.get_global_id(1);
 
                        if (c >= l_idx) {
-                         a_tmp[r][c] = a_lds[0] * a_mat[r + 1][c + 1] -
+                         a_tmp[r][c] = a_mat[0][l_idx] * a_mat[r + 1][c + 1] -
                                        a_mat[0][c + 1] * a_mat[r + 1][l_idx];
                        } else {
-                         a_tmp[r][c] = (0 - a_mat[r + 1][c] * a_lds[0]);
+                         a_tmp[r][c] = (0 - a_mat[r + 1][c] * a_mat[0][l_idx]);
                        }
 
                        if (r == 0 && c == 0) {
-                         a_arr[0] = sycl::pow(a_lds[0], (float)((N - i) - 2));
+                         a_arr[0] =
+                             sycl::pow(a_mat[0][l_idx], (float)((N - i) - 2));
                        }
                      });
     });
@@ -121,31 +116,10 @@ int64_t condense(queue &q, const float *mat, float *det) {
       .count();
 }
 
-void example_matrix(float *const mat) {
-  mat[0 * N + 0] = 1;
-  mat[0 * N + 1] = 2;
-  mat[0 * N + 2] = -1;
-  mat[0 * N + 3] = 3;
-
-  mat[1 * N + 0] = 2;
-  mat[1 * N + 1] = 1;
-  mat[1 * N + 2] = -2;
-  mat[1 * N + 3] = 3;
-
-  mat[2 * N + 0] = 3;
-  mat[2 * N + 1] = 1;
-  mat[2 * N + 2] = 2;
-  mat[2 * N + 3] = 1;
-
-  mat[3 * N + 0] = 1;
-  mat[3 * N + 1] = -1;
-  mat[3 * N + 2] = 0;
-  mat[3 * N + 3] = 2;
-}
-
 void random_matrix(float *const mat) {
-  std::mt19937 gen(1 << 10);
-  std::uniform_real_distribution<float> dis(0.f, 1.f);
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_real_distribution<float> dis(-1.f, 1.f);
 
   for (uint i = 0; i < N; i++) {
     for (uint j = 0; j < N; j++) {
@@ -170,9 +144,10 @@ int main() {
   std::cout << "running on " << d.get_info<info::device::name>() << "\n"
             << std::endl;
 
-  float *mat = (float *)malloc(sizeof(float) * N * N);
   float det = 0;
-  example_matrix(mat);
+  float *mat = (float *)malloc(sizeof(float) * N * N);
+
+  random_matrix(mat);
 
   int64_t ts = condense(q, mat, &det);
   std::cout << "computed determinant " << det << ", in " << ts << " ms"
