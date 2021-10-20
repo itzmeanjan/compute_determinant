@@ -65,7 +65,7 @@ int64_t condense(queue &q, const float *mat, float *det) {
     q.submit([&](handler &h) {
       accessor<float, 2, access::mode::read_write,
                access::target::global_buffer>
-          a_mat{b_mat, h, range<2>{N - i, 1}, id<2>{i, l_idx}};
+          a_mat{b_mat, h, range<2>{N - i, 1}, id<2>{i, i + l_idx}};
       accessor<float, 1, access::mode::write, access::target::global_buffer>
           a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
 
@@ -126,7 +126,7 @@ int64_t condense(queue &q, const float *mat, float *det) {
     mult *= h_arr[i];
   }
 
-  *det = lst_det / mult;
+  *det = lst_det * mult;
 
   std::chrono::_V2::steady_clock::time_point end =
       std::chrono::steady_clock::now();
