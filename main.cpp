@@ -1,6 +1,7 @@
 #include <CL/sycl.hpp>
 #include <chrono>
 #include <iostream>
+#include <random>
 
 using namespace sycl;
 
@@ -140,6 +141,17 @@ void example_matrix(float *const mat) {
   mat[3 * N + 1] = -1;
   mat[3 * N + 2] = 0;
   mat[3 * N + 3] = 2;
+}
+
+void random_matrix(float *const mat) {
+  std::mt19937 gen(1 << 10);
+  std::uniform_real_distribution<float> dis(0.f, 1.f);
+
+  for (uint i = 0; i < N; i++) {
+    for (uint j = 0; j < N; j++) {
+      mat[i * N + j] = dis(gen);
+    }
+  }
 }
 
 void show(const float *mat) {
