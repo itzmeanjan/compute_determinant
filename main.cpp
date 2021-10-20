@@ -19,7 +19,7 @@ int64_t condense(queue &q, const float *mat, float *det) {
 
   buffer<float, 2> b_mat{mat_, range<2>{N, N}};
   buffer<float, 2> b_tmp{tmp, range<2>{N, N}};
-  buffer<float, 1> b_arr{mat, range<1>{N - 2}};
+  buffer<float, 1> b_arr{arr, range<1>{N - 2}};
 
   std::chrono::_V2::steady_clock::time_point start =
       std::chrono::steady_clock::now();
