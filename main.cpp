@@ -21,6 +21,28 @@ void condense(queue &q, const float *mat, float *det) {
 
   uint n = N;
   for (uint i = 0; i < N - 2; i++) {
+    int l[1] = {-1};
+    {
+      buffer<int, 1> b_l{l, range<1>{1}};
+
+      q.submit([&](handler &h) {
+        accessor<float, 2, access::mode::read, access::target::global_buffer>
+            a_mat{b_mat, h, range<2>{1, N - i}, id<2>{i, i}};
+        accessor<int, 1, access::mode::read_write,
+                 access::target::global_buffer>
+            a_l{b_l, h};
+
+        h.single_task([=]() {
+          for (uint j = i; j < N; j++) {
+            if (a_mat[i][j] != 0.f) {
+              a_l[0] = j;
+              break;
+            };
+          }
+        });
+      });
+    }
+
     q.submit([&](handler &h) {
       accessor<float, 2, access::mode::read, access::target::global_buffer>
           a_mat{b_mat, h};
