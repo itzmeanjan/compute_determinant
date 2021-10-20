@@ -5,21 +5,21 @@
 
 using namespace sycl;
 
-const uint N = 1 << 3;
-const uint B = 1 << 3;
+const uint N = 1 << 8;
+const uint B = 1 << 5;
 
-int64_t condense(queue &q, const float *mat, float *det) {
-  float *mat_ = (float *)malloc(sizeof(float) * N * N);
-  float *tmp = (float *)malloc(sizeof(float) * N * N);
-  float *arr = (float *)malloc(sizeof(float) * (N - 2));
+int64_t condense(queue &q, const double *mat, double *det) {
+  double *mat_ = (double *)malloc(sizeof(double) * N * N);
+  double *tmp = (double *)malloc(sizeof(double) * N * N);
+  double *arr = (double *)malloc(sizeof(double) * (N - 2));
 
-  memcpy(mat_, mat, sizeof(float) * N * N);
-  memset(tmp, 0, sizeof(float) * N * N);
-  memset(arr, 0, sizeof(float) * (N - 2));
+  memcpy(mat_, mat, sizeof(double) * N * N);
+  memset(tmp, 0, sizeof(double) * N * N);
+  memset(arr, 0, sizeof(double) * (N - 2));
 
-  buffer<float, 2> b_mat{mat_, range<2>{N, N}};
-  buffer<float, 2> b_tmp{tmp, range<2>{N, N}};
-  buffer<float, 1> b_arr{arr, range<1>{N - 2}};
+  buffer<double, 2> b_mat{mat_, range<2>{N, N}};
+  buffer<double, 2> b_tmp{tmp, range<2>{N, N}};
+  buffer<double, 1> b_arr{arr, range<1>{N - 2}};
 
   std::chrono::_V2::steady_clock::time_point start =
       std::chrono::steady_clock::now();
@@ -30,7 +30,7 @@ int64_t condense(queue &q, const float *mat, float *det) {
       buffer<int, 1> b_l{l, range<1>{1}};
 
       q.submit([&](handler &h) {
-        accessor<float, 2, access::mode::read, access::target::global_buffer>
+        accessor<double, 2, access::mode::read, access::target::global_buffer>
             a_mat{b_mat, h, range<2>{1, N - i}, id<2>{i, i}};
         accessor<int, 1, access::mode::write, access::target::global_buffer>
             a_l{b_l, h};
@@ -55,18 +55,18 @@ int64_t condense(queue &q, const float *mat, float *det) {
     }
 
     uint l_idx = l[0];
-    float pivot = 0.f;
+    double pivot = 0.f;
     {
-      host_accessor<float, 2, access::mode::read> h_mat{b_mat, range<2>{1, 1},
-                                                        id<2>{i, i + l_idx}};
+      host_accessor<double, 2, access::mode::read> h_mat{b_mat, range<2>{1, 1},
+                                                         id<2>{i, i + l_idx}};
       pivot = h_mat[0][0];
     }
 
     q.submit([&](handler &h) {
-      accessor<float, 2, access::mode::read_write,
+      accessor<double, 2, access::mode::read_write,
                access::target::global_buffer>
           a_mat{b_mat, h, range<2>{N - i, 1}, id<2>{i, i + l_idx}};
-      accessor<float, 1, access::mode::write, access::target::global_buffer>
+      accessor<double, 1, access::mode::write, access::target::global_buffer>
           a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
 
       h.parallel_for(nd_range<1>{range<1>{N - i}, range<1>{N - i > B ? B : 2}},
@@ -82,13 +82,13 @@ int64_t condense(queue &q, const float *mat, float *det) {
     });
 
     q.submit([&](handler &h) {
-      accessor<float, 2, access::mode::read, access::target::global_buffer>
+      accessor<double, 2, access::mode::read, access::target::global_buffer>
           a_mat{b_mat, h, range<2>{N - i, N - i}, id<2>{i, i}};
-      accessor<float, 2, access::mode::write, access::target::global_buffer>
+      accessor<double, 2, access::mode::write, access::target::global_buffer>
           a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
                 id<2>{i + 1, i + 1}, noinit};
-      accessor<float, 1, access::mode::read_write, access::target::local> a_lds{
-          range<1>{1}, h};
+      accessor<double, 1, access::mode::read_write, access::target::local>
+          a_lds{range<1>{1}, h};
 
       h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
                                  range<2>{1, N - (i + 1) > B ? B : 2}},
@@ -113,10 +113,10 @@ int64_t condense(queue &q, const float *mat, float *det) {
     });
 
     q.submit([&](handler &h) {
-      accessor<float, 2, access::mode::write, access::target::global_buffer>
+      accessor<double, 2, access::mode::write, access::target::global_buffer>
           a_mat{b_mat, h, range<2>{N - (i + 1), N - (i + 1)},
                 id<2>{i + 1, i + 1}};
-      accessor<float, 2, access::mode::read, access::target::global_buffer>
+      accessor<double, 2, access::mode::read, access::target::global_buffer>
           a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
                 id<2>{i + 1, i + 1}};
 
@@ -124,12 +124,12 @@ int64_t condense(queue &q, const float *mat, float *det) {
     });
   }
 
-  host_accessor<float, 2, access::mode::read> h_mat{b_mat, range<2>{2, 2},
-                                                    id<2>{N - 2, N - 2}};
-  float lst_det = h_mat[0][0] * h_mat[1][1] - h_mat[0][1] * h_mat[1][0];
+  host_accessor<double, 2, access::mode::read> h_mat{b_mat, range<2>{2, 2},
+                                                     id<2>{N - 2, N - 2}};
+  double lst_det = h_mat[0][0] * h_mat[1][1] - h_mat[0][1] * h_mat[1][0];
 
-  host_accessor<float, 1, access::mode::read> h_arr{b_arr};
-  float mult = 1.f;
+  host_accessor<double, 1, access::mode::read> h_arr{b_arr};
+  double mult = 1.f;
 
   for (uint i = 0; i < N - 2; i++) {
     mult *= h_arr[i];
@@ -143,10 +143,10 @@ int64_t condense(queue &q, const float *mat, float *det) {
       .count();
 }
 
-void random_matrix(float *const mat) {
+void random_matrix(double *const mat) {
   std::random_device rd;
   std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dis(-1.f, 1.f);
+  std::uniform_real_distribution<double> dis(-1.f, 1.f);
 
   for (uint i = 0; i < N; i++) {
     for (uint j = 0; j < N; j++) {
@@ -155,15 +155,15 @@ void random_matrix(float *const mat) {
   }
 }
 
-void hilbert_matrix(float *const mat) {
+void hilbert_matrix(double *const mat) {
   for (uint i = 0; i < N; i++) {
     for (uint j = 0; j < N; j++) {
-      mat[i * N + j] = 1.f / (float)(i + j + 1);
+      mat[i * N + j] = 1.f / (double)(i + j + 1);
     }
   }
 }
 
-void show(const float *mat) {
+void show(const double *mat) {
   for (uint i = 0; i < N; i++) {
     for (uint j = 0; j < N; j++) {
       std::cout << mat[i * N + j] << "\t";
@@ -179,10 +179,10 @@ int main() {
   std::cout << "running on " << d.get_info<info::device::name>() << "\n"
             << std::endl;
 
-  float det = 0;
-  float *mat = (float *)malloc(sizeof(float) * N * N);
+  double det = 0;
+  double *mat = (double *)malloc(sizeof(double) * N * N);
 
-  hilbert_matrix(mat);
+  random_matrix(mat);
 
   int64_t ts = condense(q, mat, &det);
   std::cout << "computed determinant " << det << ", in " << ts << " ms"
