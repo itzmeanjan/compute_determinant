@@ -35,7 +35,7 @@ int64_t condense(queue &q, const double *mat, double *det) {
         accessor<int, 1, access::mode::write, access::target::global_buffer>
             a_l{b_l, h};
 
-        h.single_task([=]() {
+        h.single_task<class kernelFindPivotColumn>([=]() {
           for (uint j = 0; j < N - i; j++) {
             if (a_mat[0][j] != 0.f) {
               a_l[0] = j;
@@ -69,16 +69,17 @@ int64_t condense(queue &q, const double *mat, double *det) {
       accessor<double, 1, access::mode::write, access::target::global_buffer>
           a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
 
-      h.parallel_for(nd_range<1>{range<1>{N - i}, range<1>{N - i > B ? B : 2}},
-                     [=](nd_item<1> it) {
-                       const size_t r = it.get_global_id(0);
+      h.parallel_for<class kernelNormalizePivotColumn>(
+          nd_range<1>{range<1>{N - i}, range<1>{N - i > B ? B : 2}},
+          [=](nd_item<1> it) {
+            const size_t r = it.get_global_id(0);
 
-                       a_mat[r][0] /= pivot;
+            a_mat[r][0] /= pivot;
 
-                       if (r == 0) {
-                         a_arr[0] = pivot;
-                       }
-                     });
+            if (r == 0) {
+              a_arr[0] = pivot;
+            }
+          });
     });
 
     q.submit([&](handler &h) {
@@ -90,26 +91,27 @@ int64_t condense(queue &q, const double *mat, double *det) {
       accessor<double, 1, access::mode::read_write, access::target::local>
           a_lds{range<1>{1}, h};
 
-      h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
-                                 range<2>{1, N - (i + 1) > B ? B : 2}},
-                     [=](nd_item<2> it) {
-                       ONEAPI::sub_group sg = it.get_sub_group();
-                       if (ONEAPI::leader(sg)) {
-                         a_lds[0] = a_mat[0][l_idx];
-                       }
+      h.parallel_for<class kernelComputeB>(
+          nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
+                      range<2>{1, N - (i + 1) > B ? B : 2}},
+          [=](nd_item<2> it) {
+            ONEAPI::sub_group sg = it.get_sub_group();
+            if (ONEAPI::leader(sg)) {
+              a_lds[0] = a_mat[0][l_idx];
+            }
 
-                       sg.barrier();
+            sg.barrier();
 
-                       const size_t r = it.get_global_id(0);
-                       const size_t c = it.get_global_id(1);
+            const size_t r = it.get_global_id(0);
+            const size_t c = it.get_global_id(1);
 
-                       if (c >= l_idx) {
-                         a_tmp[r][c] = a_lds[0] * a_mat[r + 1][c + 1] -
-                                       a_mat[0][c + 1] * a_mat[r + 1][l_idx];
-                       } else {
-                         a_tmp[r][c] = -1.f * a_mat[r + 1][c] * a_lds[0];
-                       }
-                     });
+            if (c >= l_idx) {
+              a_tmp[r][c] = a_lds[0] * a_mat[r + 1][c + 1] -
+                            a_mat[0][c + 1] * a_mat[r + 1][l_idx];
+            } else {
+              a_tmp[r][c] = -1.f * a_mat[r + 1][c] * a_lds[0];
+            }
+          });
     });
 
     q.submit([&](handler &h) {
