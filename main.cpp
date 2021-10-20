@@ -65,4 +65,26 @@ void condense(queue &q, const float *mat, float *det) {
   }
 }
 
+void example_matrix(float *const mat) {
+  mat[0 * N + 0] = 1;
+  mat[0 * N + 1] = 2;
+  mat[0 * N + 2] = -1;
+  mat[0 * N + 3] = 3;
+
+  mat[1 * N + 0] = 2;
+  mat[1 * N + 1] = 1;
+  mat[1 * N + 2] = -2;
+  mat[1 * N + 3] = 3;
+
+  mat[2 * N + 0] = 3;
+  mat[2 * N + 1] = 1;
+  mat[2 * N + 2] = 2;
+  mat[2 * N + 3] = 1;
+
+  mat[3 * N + 0] = 1;
+  mat[3 * N + 1] = -1;
+  mat[3 * N + 2] = 0;
+  mat[3 * N + 3] = 2;
+}
+
 int main() { return 0; }
