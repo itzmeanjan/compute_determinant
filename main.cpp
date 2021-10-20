@@ -5,8 +5,8 @@
 
 using namespace sycl;
 
-const uint N = 1 << 2;
-const uint B = 1 << 2;
+const uint N = 1 << 3;
+const uint B = 1 << 3;
 
 int64_t condense(queue &q, const float *mat, float *det) {
   float *mat_ = (float *)malloc(sizeof(float) * N * N);
@@ -87,18 +87,27 @@ int64_t condense(queue &q, const float *mat, float *det) {
       accessor<float, 2, access::mode::write, access::target::global_buffer>
           a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
                 id<2>{i + 1, i + 1}, noinit};
+      accessor<float, 1, access::mode::read_write, access::target::local> a_lds{
+          range<1>{1}, h};
 
       h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
                                  range<2>{1, N - (i + 1) > B ? B : 2}},
                      [=](nd_item<2> it) {
+                       ONEAPI::sub_group sg = it.get_sub_group();
+                       if (ONEAPI::leader(sg)) {
+                         a_lds[0] = a_mat[0][l_idx];
+                       }
+
+                       sg.barrier();
+
                        const size_t r = it.get_global_id(0);
                        const size_t c = it.get_global_id(1);
 
                        if (c >= l_idx) {
-                         a_tmp[r][c] = a_mat[0][l_idx] * a_mat[r + 1][c + 1] -
+                         a_tmp[r][c] = a_lds[0] * a_mat[r + 1][c + 1] -
                                        a_mat[0][c + 1] * a_mat[r + 1][l_idx];
                        } else {
-                         a_tmp[r][c] = -1.f * a_mat[r + 1][c] * a_mat[0][l_idx];
+                         a_tmp[r][c] = -1.f * a_mat[r + 1][c] * a_lds[0];
                        }
                      });
     });
