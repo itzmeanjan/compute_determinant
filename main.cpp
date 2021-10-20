@@ -42,14 +42,42 @@ void condense(queue &q, const float *mat, float *det) {
       });
     }
 
+    if (l[0] == -1) {
+      *det = 0;
+      return;
+    }
+
+    uint l_idx = l[0];
     q.submit([&](handler &h) {
       accessor<float, 2, access::mode::read, access::target::global_buffer>
           a_mat{b_mat, h};
       accessor<float, 2, access::mode::write, access::target::global_buffer>
           a_tmp{b_tmp, h};
+      accessor<float, 1, access::mode::write, access::target::global_buffer>
+          a_arr{b_arr, h, range<1>{1}, id<1>{i}};
 
-      h.parallel_for(nd_range<2>{range<2>{N, N}, range<2>{1, B}},
-                     [=](nd_item<2> it) {});
+      h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
+                                 range<2>{1, N - (i + 1) > B ? B : 2},
+                                 id<2>{i + 1, i + 1}},
+                     [=](nd_item<2> it) {
+                       const size_t r = it.get_global_id(0);
+                       const size_t c = it.get_global_id(1);
+
+                       const size_t r_ = r - (i + 1);
+                       const size_t c_ = c - (i + 1);
+
+                       if (c >= l_idx) {
+                         a_tmp[r][c] = a_mat[i][l_idx] * a_mat[r_ + 1][c_ + 1] -
+                                       a_mat[i][c_ + 1] * a_mat[r_ + 1][l_idx];
+                       } else {
+                         a_tmp[r][c] =
+                             (0 - a_mat[r_ + 1][c_] * a_mat[i][l_idx]);
+                       }
+
+                       if (r_ == 0 && c_ == 0) {
+                         a_arr[0] = a_mat[i][l_idx];
+                       }
+                     });
     });
 
     auto evt = q.submit([&](handler &h) {
