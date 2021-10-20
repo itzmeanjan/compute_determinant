@@ -128,6 +128,14 @@ void random_matrix(float *const mat) {
   }
 }
 
+void hilbert_matrix(float *const mat) {
+  for (uint i = 0; i < N; i++) {
+    for (uint j = 0; j < N; j++) {
+      mat[i * N + j] = 1.f / (float)(i + j + 1);
+    }
+  }
+}
+
 void show(const float *mat) {
   for (uint i = 0; i < N; i++) {
     for (uint j = 0; j < N; j++) {
