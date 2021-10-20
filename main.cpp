@@ -5,8 +5,8 @@
 
 using namespace sycl;
 
-const uint N = 1 << 10;
-const uint B = 1 << 5;
+const uint N = 1 << 2;
+const uint B = 1 << 2;
 
 int64_t condense(queue &q, const float *mat, float *det) {
   float *mat_ = (float *)malloc(sizeof(float) * N * N);
@@ -55,6 +55,31 @@ int64_t condense(queue &q, const float *mat, float *det) {
     }
 
     uint l_idx = l[0];
+    float pivot = 0.f;
+    {
+      host_accessor<float, 2, access::mode::read> h_mat{b_mat, range<2>{1, 1},
+                                                        id<2>{i, i + l_idx}};
+      pivot = h_mat[0][0];
+    }
+
+    q.submit([&](handler &h) {
+      accessor<float, 2, access::mode::read_write,
+               access::target::global_buffer>
+          a_mat{b_mat, h, range<2>{N - i, 1}, id<2>{i, l_idx}};
+      accessor<float, 1, access::mode::write, access::target::global_buffer>
+          a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
+
+      h.parallel_for(nd_range<1>{range<1>{N - i}, range<1>{N - i > B ? B : 2}},
+                     [=](nd_item<1> it) {
+                       const size_t r = it.get_global_id(0);
+
+                       a_mat[r][0] /= pivot;
+
+                       if (r == 0) {
+                         a_arr[0] = pivot;
+                       }
+                     });
+    });
 
     q.submit([&](handler &h) {
       accessor<float, 2, access::mode::read, access::target::global_buffer>
@@ -62,8 +87,6 @@ int64_t condense(queue &q, const float *mat, float *det) {
       accessor<float, 2, access::mode::write, access::target::global_buffer>
           a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
                 id<2>{i + 1, i + 1}, noinit};
-      accessor<float, 1, access::mode::write, access::target::global_buffer>
-          a_arr{b_arr, h, range<1>{1}, id<1>{i}, noinit};
 
       h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
                                  range<2>{1, N - (i + 1) > B ? B : 2}},
@@ -75,12 +98,7 @@ int64_t condense(queue &q, const float *mat, float *det) {
                          a_tmp[r][c] = a_mat[0][l_idx] * a_mat[r + 1][c + 1] -
                                        a_mat[0][c + 1] * a_mat[r + 1][l_idx];
                        } else {
-                         a_tmp[r][c] = (0 - a_mat[r + 1][c] * a_mat[0][l_idx]);
-                       }
-
-                       if (r == 0 && c == 0) {
-                         a_arr[0] =
-                             sycl::pow(a_mat[0][l_idx], (float)((N - i) - 2));
+                         a_tmp[r][c] = -1.f * a_mat[r + 1][c] * a_mat[0][l_idx];
                        }
                      });
     });
@@ -155,7 +173,7 @@ int main() {
   float det = 0;
   float *mat = (float *)malloc(sizeof(float) * N * N);
 
-  random_matrix(mat);
+  hilbert_matrix(mat);
 
   int64_t ts = condense(q, mat, &det);
   std::cout << "computed determinant " << det << ", in " << ts << " ms"
