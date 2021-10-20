@@ -15,11 +15,10 @@ void condense(queue &q, const float *mat, float *det) {
   memset(tmp, 0, sizeof(float) * N * N);
   memset(arr, 0, sizeof(float) * (N - 2));
 
-  buffer<float, 2> b_mat{mat, range<2>{N, N}};
+  buffer<float, 2> b_mat{mat_, range<2>{N, N}};
   buffer<float, 2> b_tmp{tmp, range<2>{N, N}};
   buffer<float, 1> b_arr{mat, range<1>{N - 2}};
 
-  uint n = N;
   for (uint i = 0; i < N - 2; i++) {
     int l[1] = {-1};
     {
@@ -34,7 +33,7 @@ void condense(queue &q, const float *mat, float *det) {
         h.single_task([=]() {
           for (uint j = 0; j < N - i; j++) {
             if (a_mat[0][j] != 0.f) {
-              a_l[0] = i + j;
+              a_l[0] = j;
               break;
             };
           }
@@ -48,44 +47,43 @@ void condense(queue &q, const float *mat, float *det) {
     }
 
     uint l_idx = l[0];
+
     q.submit([&](handler &h) {
       accessor<float, 2, access::mode::read, access::target::global_buffer>
-          a_mat{b_mat, h};
+          a_mat{b_mat, h, range<2>{N - i, N - i}, id<2>{i, i}};
       accessor<float, 2, access::mode::write, access::target::global_buffer>
-          a_tmp{b_tmp, h};
+          a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
+                id<2>{i + 1, i + 1}};
       accessor<float, 1, access::mode::write, access::target::global_buffer>
           a_arr{b_arr, h, range<1>{1}, id<1>{i}};
 
       h.parallel_for(nd_range<2>{range<2>{N - (i + 1), N - (i + 1)},
-                                 range<2>{1, N - (i + 1) > B ? B : 2},
-                                 id<2>{i + 1, i + 1}},
+                                 range<2>{1, N - (i + 1) > B ? B : 2}},
                      [=](nd_item<2> it) {
                        const size_t r = it.get_global_id(0);
                        const size_t c = it.get_global_id(1);
 
-                       const size_t r_ = r - (i + 1);
-                       const size_t c_ = c - (i + 1);
-
                        if (c >= l_idx) {
-                         a_tmp[r][c] = a_mat[i][l_idx] * a_mat[r_ + 1][c_ + 1] -
-                                       a_mat[i][c_ + 1] * a_mat[r_ + 1][l_idx];
+                         a_tmp[r][c] = a_mat[0][l_idx] * a_mat[r + 1][c + 1] -
+                                       a_mat[0][c + 1] * a_mat[r + 1][l_idx];
                        } else {
-                         a_tmp[r][c] =
-                             (0 - a_mat[r_ + 1][c_] * a_mat[i][l_idx]);
+                         a_tmp[r][c] = (0 - a_mat[r + 1][c] * a_mat[0][l_idx]);
                        }
 
-                       if (r_ == 0 && c_ == 0) {
+                       if (r == 0 && c == 0) {
                          a_arr[0] =
-                             sycl::pow(a_mat[i][l_idx], (float)((N - i) - 2));
+                             sycl::pow(a_mat[0][l_idx], (float)((N - i) - 2));
                        }
                      });
     });
 
     auto evt = q.submit([&](handler &h) {
       accessor<float, 2, access::mode::write, access::target::global_buffer>
-          a_mat{b_mat, h};
+          a_mat{b_mat, h, range<2>{N - (i + 1), N - (i + 1)},
+                id<2>{i + 1, i + 1}};
       accessor<float, 2, access::mode::read, access::target::global_buffer>
-          a_tmp{b_tmp, h};
+          a_tmp{b_tmp, h, range<2>{N - (i + 1), N - (i + 1)},
+                id<2>{i + 1, i + 1}};
 
       h.copy(a_tmp, a_mat);
     });
@@ -94,7 +92,7 @@ void condense(queue &q, const float *mat, float *det) {
 
   host_accessor<float, 2, access::mode::read> h_mat{b_mat, range<2>{2, 2},
                                                     id<2>{N - 2, N - 2}};
-  float lst = h_mat[0][0] * h_mat[1][1] - h_mat[0][1] * h_mat[1][0];
+  float lst_det = h_mat[0][0] * h_mat[1][1] - h_mat[0][1] * h_mat[1][0];
 
   host_accessor<float, 1, access::mode::read> h_arr{b_arr};
   float mult = 1.f;
@@ -103,7 +101,7 @@ void condense(queue &q, const float *mat, float *det) {
     mult *= h_arr[i];
   }
 
-  *det = lst / mult;
+  *det = lst_det / mult;
 }
 
 void example_matrix(float *const mat) {
@@ -145,7 +143,13 @@ int main() {
             << std::endl;
 
   float *mat = (float *)malloc(sizeof(float) * N * N);
+  float det = 0;
   example_matrix(mat);
+
+  condense(q, mat, &det);
+  std::cout << "determinant " << det << std::endl;
+
+  std::free(mat);
 
   return 0;
 }
