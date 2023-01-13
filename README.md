@@ -1,3 +1,5 @@
+> **Warning** I've stopped maintaining this project !
+
 # compute_determinant
 Parallel Matrix Determinant Computation, in SYCL DPC++
 
